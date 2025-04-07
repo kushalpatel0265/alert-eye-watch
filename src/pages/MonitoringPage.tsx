@@ -6,12 +6,13 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { Detection } from "@/types";
 import { toast } from "@/components/ui/use-toast";
 
-// Import our new components
+// Import our components
 import MonitoringHeader from "@/components/monitoring/MonitoringHeader";
 import VideoFeed from "@/components/monitoring/VideoFeed";
 import StatusCard from "@/components/monitoring/StatusCard";
 import TechnicalInfoCard from "@/components/monitoring/TechnicalInfoCard";
 import DetectionHistory from "@/components/monitoring/DetectionHistory";
+import ModelUpload from "@/components/monitoring/ModelUpload";
 import useWebcamDetection from "@/hooks/useWebcamDetection";
 import { handleSendAlert } from "@/services/alertService";
 
@@ -41,11 +42,14 @@ const MonitoringPage = () => {
     isStreaming,
     isLoading,
     currentDetection,
+    isModelLoaded,
+    modelName,
     videoRef,
     canvasRef,
     startStream,
     stopStream,
-    startDetection
+    startDetection,
+    handleModelLoaded
   } = useWebcamDetection({
     cameraId,
     threshold: settings.threshold,
@@ -61,18 +65,19 @@ const MonitoringPage = () => {
       return;
     }
 
-    // Start the camera stream and detection
-    const initializeMonitoring = async () => {
+    // Start the camera stream
+    const initializeCamera = async () => {
       try {
         await startStream();
-        startDetection();
+        // Note: We don't start detection automatically here anymore
+        // We'll wait for the model to be loaded first
       } catch (error) {
         // Error handling is done in the hook, just navigate away
         navigate("/cameras");
       }
     };
 
-    initializeMonitoring();
+    initializeCamera();
     
     // Cleanup on unmount
     return () => {
@@ -96,6 +101,10 @@ const MonitoringPage = () => {
       <main className="flex-1 container mx-auto p-4">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2">
+            {/* Model upload section - visible above the video feed */}
+            <ModelUpload onModelLoaded={handleModelLoaded} />
+            
+            {/* Video feed */}
             <VideoFeed 
               isLoading={isLoading}
               isStreaming={isStreaming}
@@ -107,7 +116,7 @@ const MonitoringPage = () => {
             {/* Controls and info */}
             <div className="mt-4 flex flex-col md:flex-row gap-4">
               <StatusCard alertMode={alertMode} settings={settings} />
-              <TechnicalInfoCard />
+              <TechnicalInfoCard isModelLoaded={isModelLoaded} modelName={modelName} />
             </div>
           </div>
           

@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Detection } from '@/types';
-import { detectWeapons } from '@/utils/weaponDetection';
+import { detectWeapons, loadModel, getModelName } from '@/utils/weaponDetection';
 import { toast } from '@/components/ui/use-toast';
 
 interface UseWebcamDetectionProps {
@@ -22,11 +22,12 @@ const useWebcamDetection = ({
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [currentDetection, setCurrentDetection] = useState<Detection | null>(null);
+  const [isModelLoaded, setIsModelLoaded] = useState(false);
+  const [modelName, setModelName] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const detectionIntervalRef = useRef<number | null>(null);
-  const modelLoaded = useRef<boolean>(false);
 
   const startStream = async () => {
     try {
@@ -77,16 +78,14 @@ const useWebcamDetection = ({
   };
 
   const startDetection = () => {
-    // Load the model first
-    if (!modelLoaded.current) {
+    // Check if the model is loaded
+    if (!isModelLoaded) {
       toast({
-        title: "Loading Model",
-        description: "Initializing weapon detection model...",
+        title: "Model Not Loaded",
+        description: "Please upload and load your detection model first.",
+        variant: "default",
       });
-      
-      // Load the model (this is a placeholder - you'll need to implement the actual loading)
-      // For now we're just setting a flag
-      modelLoaded.current = true;
+      return;
     }
     
     // Run detection at regular intervals
@@ -138,15 +137,37 @@ const useWebcamDetection = ({
     }, 1000); // Check every 1 second
   };
 
+  // Handle model loading
+  const handleModelLoaded = (loaded: boolean) => {
+    setIsModelLoaded(loaded);
+    if (loaded) {
+      setModelName(getModelName());
+      // Start detection automatically when model is loaded
+      startDetection();
+    }
+  };
+
+  // Clean up detection interval on unmount
+  useEffect(() => {
+    return () => {
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+      }
+    };
+  }, []);
+
   return {
     isStreaming,
     isLoading,
     currentDetection,
+    isModelLoaded,
+    modelName,
     videoRef,
     canvasRef,
     startStream,
     stopStream,
-    startDetection
+    startDetection,
+    handleModelLoaded
   };
 };
 
