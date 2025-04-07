@@ -72,8 +72,12 @@ const MonitoringPage = () => {
         // Note: We don't start detection automatically here anymore
         // We'll wait for the model to be loaded first
       } catch (error) {
-        // Error handling is done in the hook, just navigate away
-        navigate("/cameras");
+        console.error("Failed to initialize camera:", error);
+        toast({
+          title: "Camera Error",
+          description: "Could not access camera. Please check permissions and try again.",
+          variant: "destructive",
+        });
       }
     };
 
@@ -88,6 +92,32 @@ const MonitoringPage = () => {
   const stopMonitoring = () => {
     stopStream();
     navigate("/cameras");
+  };
+
+  // Function to retry stream
+  const handleRetryStream = async () => {
+    toast({
+      title: "Retrying Camera Connection",
+      description: "Attempting to reconnect to camera...",
+    });
+    
+    try {
+      await startStream();
+      if (isModelLoaded) {
+        startDetection();
+      }
+      toast({
+        title: "Camera Connected",
+        description: "Successfully reconnected to camera stream.",
+      });
+    } catch (error) {
+      console.error("Retry failed:", error);
+      toast({
+        title: "Connection Failed",
+        description: "Could not connect to camera. Please check permissions and try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -111,12 +141,17 @@ const MonitoringPage = () => {
               videoRef={videoRef}
               canvasRef={canvasRef}
               currentDetection={currentDetection}
+              onRetryStream={handleRetryStream}
             />
             
             {/* Controls and info */}
             <div className="mt-4 flex flex-col md:flex-row gap-4">
               <StatusCard alertMode={alertMode} settings={settings} />
-              <TechnicalInfoCard isModelLoaded={isModelLoaded} modelName={modelName} />
+              <TechnicalInfoCard 
+                isModelLoaded={isModelLoaded} 
+                isStreaming={isStreaming}
+                modelName={modelName} 
+              />
             </div>
           </div>
           

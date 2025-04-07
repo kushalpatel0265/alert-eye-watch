@@ -33,28 +33,49 @@ const useWebcamDetection = ({
     try {
       setIsLoading(true);
       
-      if (!cameraId) {
-        throw new Error("No camera selected");
+      // Clear any existing stream
+      if (streamRef.current) {
+        stopStream();
       }
 
+      // If no camera ID is provided, use default camera
       const constraints = {
-        video: { deviceId: { exact: cameraId } }
+        video: cameraId ? { deviceId: { exact: cameraId } } : true,
+        audio: false
       };
+      
+      console.log("Requesting camera with constraints:", constraints);
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setIsStreaming(true);
+        
+        // Wait for video to be ready before playing
+        videoRef.current.onloadedmetadata = async () => {
+          if (videoRef.current) {
+            try {
+              await videoRef.current.play();
+              setIsStreaming(true);
+              console.log("Video stream started successfully");
+            } catch (playError) {
+              console.error("Error playing video:", playError);
+              toast({
+                title: "Video Playback Error",
+                description: "Could not play the video stream. Please refresh and try again.",
+                variant: "destructive",
+              });
+            }
+          }
+        };
       }
       
     } catch (error) {
       console.error("Error starting camera stream:", error);
       toast({
         title: "Camera Error",
-        description: "Failed to start camera stream. Please try again or select a different camera.",
+        description: "Failed to start camera stream. Please check your camera permissions and try again.",
         variant: "destructive",
       });
       throw error; // Re-throw so the caller can handle navigation if needed
@@ -65,7 +86,10 @@ const useWebcamDetection = ({
 
   const stopStream = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        console.log("Stopping track:", track.kind, track.label, "enabled:", track.enabled);
+        track.stop();
+      });
       streamRef.current = null;
     }
     
@@ -75,6 +99,11 @@ const useWebcamDetection = ({
     }
     
     setIsStreaming(false);
+    
+    // Also clear video element
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
   };
 
   const startDetection = () => {
@@ -84,6 +113,16 @@ const useWebcamDetection = ({
         title: "Model Not Loaded",
         description: "Please upload and load your detection model first.",
         variant: "default",
+      });
+      return;
+    }
+    
+    // Check if streaming is active
+    if (!isStreaming) {
+      toast({
+        title: "Stream Not Active",
+        description: "Camera stream is not active. Please check your camera settings.",
+        variant: "destructive",
       });
       return;
     }
@@ -143,16 +182,23 @@ const useWebcamDetection = ({
     if (loaded) {
       setModelName(getModelName());
       // Start detection automatically when model is loaded
-      startDetection();
+      if (isStreaming) {
+        startDetection();
+      } else {
+        // Try to restart the stream if it's not active
+        startStream().then(() => {
+          startDetection();
+        }).catch(error => {
+          console.error("Failed to restart stream after model load:", error);
+        });
+      }
     }
   };
 
-  // Clean up detection interval on unmount
+  // Clean up detection interval and streams on unmount
   useEffect(() => {
     return () => {
-      if (detectionIntervalRef.current) {
-        clearInterval(detectionIntervalRef.current);
-      }
+      stopStream();
     };
   }, []);
 
