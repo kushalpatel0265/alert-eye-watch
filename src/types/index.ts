@@ -14,6 +14,14 @@ export interface Detection {
   timestamp: Date;
   confidence: number;
   imageData?: string;
+  boundingBoxes?: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    class: string;
+    confidence: number;
+  }>;
 }
 
 export interface AlertSettings {

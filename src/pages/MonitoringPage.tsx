@@ -13,16 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { formatDistance } from "date-fns";
-
-// Simulate weapon detection (in a real app, this would be handled by your model)
-const simulateDetection = (): { detected: boolean; confidence: number } => {
-  const randomNumber = Math.random();
-  // 5% chance of detection for demo purposes
-  return { 
-    detected: randomNumber < 0.05, 
-    confidence: randomNumber < 0.05 ? 0.7 + (randomNumber * 0.3) : 0 
-  };
-};
+import { detectWeapons } from "@/utils/weaponDetection";
 
 // Mock function to send alert (in real app, would make API call to your .NET backend)
 const sendAlert = async (detection: Detection, email?: string, phone?: string) => {
@@ -42,6 +33,7 @@ const MonitoringPage = () => {
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const detectionIntervalRef = useRef<number | null>(null);
+  const modelLoaded = useRef<boolean>(false);
 
   const { user } = useAuth();
   const { settings } = useSettings();
@@ -72,7 +64,7 @@ const MonitoringPage = () => {
         
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play();
+          await videoRef.current.play();
           setIsStreaming(true);
         }
         
@@ -96,24 +88,43 @@ const MonitoringPage = () => {
 
     // Cleanup on unmount
     return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (detectionIntervalRef.current) {
-        clearInterval(detectionIntervalRef.current);
-      }
+      stopStream();
     };
   }, [cameraId, navigate, user]);
 
+  const stopStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
+    }
+    
+    setIsStreaming(false);
+  };
+
   const startDetection = () => {
-    // In a real app, this would be running your ML model on frames from the video
-    detectionIntervalRef.current = window.setInterval(() => {
+    // Load the model first
+    if (!modelLoaded.current) {
+      toast({
+        title: "Loading Model",
+        description: "Initializing weapon detection model...",
+      });
+      
+      // Load the model (this is a placeholder - you'll need to implement the actual loading)
+      // For now we're just setting a flag
+      modelLoaded.current = true;
+    }
+    
+    // Run detection at regular intervals
+    detectionIntervalRef.current = window.setInterval(async () => {
       if (!videoRef.current || !canvasRef.current || !isStreaming) return;
       
-      const { detected, confidence } = simulateDetection();
-      
-      if (detected && confidence >= settings.threshold) {
-        // Capture frame
+      try {
+        // Capture frame from video
         const canvas = canvasRef.current;
         const video = videoRef.current;
         const context = canvas.getContext('2d');
@@ -123,26 +134,38 @@ const MonitoringPage = () => {
           canvas.height = video.videoHeight;
           context.drawImage(video, 0, 0, canvas.width, canvas.height);
           
-          // In a real app, you might want to compress this or send it directly
+          // Get image data for model inference
           const imageData = canvas.toDataURL('image/jpeg');
           
-          const detection: Detection = {
-            timestamp: new Date(),
-            confidence,
-            imageData
-          };
+          // Run detection on the current frame
+          // In a real implementation, this would call your weapon detection model
+          const result = await detectWeapons(imageData);
           
-          // Add to detections history
-          setDetections(prev => [detection, ...prev]);
-          setCurrentDetection(detection);
-          
-          // Send alert if in alert mode
-          if (alertMode) {
-            handleSendAlert(detection);
+          // Process detection results
+          if (result.detected && result.confidence >= settings.threshold) {
+            const detection: Detection = {
+              timestamp: new Date(),
+              confidence: result.confidence,
+              imageData
+            };
+            
+            // Add to detections history
+            setDetections(prev => [detection, ...prev]);
+            setCurrentDetection(detection);
+            
+            // Send alert if in alert mode
+            if (alertMode) {
+              handleSendAlert(detection);
+            }
+          } else {
+            // Clear current detection if nothing is detected
+            setCurrentDetection(null);
           }
         }
+      } catch (error) {
+        console.error("Error during weapon detection:", error);
       }
-    }, 2000); // Check every 2 seconds
+    }, 1000); // Check every 1 second
   };
 
   const handleSendAlert = async (detection: Detection) => {
@@ -188,13 +211,7 @@ const MonitoringPage = () => {
   };
 
   const stopMonitoring = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current);
-    }
-    setIsStreaming(false);
+    stopStream();
     navigate("/cameras");
   };
 
